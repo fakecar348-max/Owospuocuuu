@@ -136,6 +136,7 @@ class KayitMenu(View):
         if kayitsiz in self.member.roles:
             await self.member.remove_roles(kayitsiz)
 
+        # kayıt sayacı
         kayit_sayilari[self.yetkili.id] = kayit_sayilari.get(self.yetkili.id, 0) + 1
 
         await interaction.response.send_message(
@@ -159,6 +160,14 @@ async def k(ctx, member: discord.Member, *, isim):
     )
 
     await ctx.send(embed=embed, view=KayitMenu(member, ctx.author))
+
+# ---------------- KAYITSAY ----------------
+@bot.command()
+async def kayitsay(ctx):
+
+    sayi = kayit_sayilari.get(ctx.author.id, 0)
+
+    await ctx.send(f"📊 {ctx.author.mention} toplam kayıt: **{sayi}**")
 
 # ---------------- JOIN ----------------
 @bot.event
