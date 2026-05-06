@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands
 from discord.ui import View, Select
 import os
+import datetime
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -14,22 +15,40 @@ FUTBOLCU_ROL = 1499363339892162560
 BASKAN_ROL = 1499363343683817542
 UYE_ROL = 1499363345189310615
 
-LOG_KANAL = 123456789012345678
+JOIN_KANAL = 1499363754402517124
 
 # ---------------- INTENTS ----------------
 intents = discord.Intents.default()
 intents.message_content = True
-intents.members = True  # 🔥 önemli
+intents.members = True
 
 bot = commands.Bot(command_prefix=".", intents=intents)
 
 kayit_sayilari = {}
+invites_cache = {}
 
-# ---------------- LOG ----------------
-async def log_gonder(guild, mesaj):
-    kanal = guild.get_channel(LOG_KANAL)
-    if kanal:
-        await kanal.send(mesaj)
+# ---------------- READY ----------------
+@bot.event
+async def on_ready():
+    for guild in bot.guilds:
+        invites_cache[guild.id] = await guild.invites()
+    print(f"Bot aktif: {bot.user}")
+
+# ---------------- INVITE TRACK ----------------
+async def find_invite(member):
+    guild = member.guild
+
+    old_invites = invites_cache.get(guild.id, [])
+    new_invites = await guild.invites()
+
+    invites_cache[guild.id] = new_invites
+
+    for new in new_invites:
+        for old in old_invites:
+            if new.code == old.code and new.uses > old.uses:
+                return new
+
+    return None
 
 # ---------------- ERROR SYSTEM ----------------
 @bot.event
@@ -39,7 +58,7 @@ async def on_command_error(ctx, error):
         return await ctx.send("❌ Komut yok!")
 
     elif isinstance(error, commands.MissingRequiredArgument):
-        return await ctx.send("❌ Eksik argüman!")
+        return await ctx.send("❌ Eksik bilgi!")
 
     elif isinstance(error, commands.MemberNotFound):
         return await ctx.send("❌ Kullanıcı bulunamadı!")
@@ -60,17 +79,13 @@ async def kayitsiz(ctx, member: discord.Member = None):
 
     kayitsiz_rol = ctx.guild.get_role(KAYITSIZ_ROL)
 
-    # 🔴 ALL KOMUTU
-    if member is None or str(member).lower() == "all":
+    if member is None or str(member).lower() in ["all", "@everyone", "everyone"]:
 
         await ctx.send("⚠️ Tüm sunucu kayıtsıza çekiliyor...")
 
-        members = list(ctx.guild.members)  # 🔥 FIX
-
-        for m in members:
+        for m in list(ctx.guild.members):
             if m.bot:
                 continue
-
             try:
                 await m.edit(roles=[])
                 await m.add_roles(kayitsiz_rol)
@@ -78,17 +93,14 @@ async def kayitsiz(ctx, member: discord.Member = None):
                 pass
 
         await ctx.send("✅ Tüm kullanıcılar kayıtsıza alındı.")
-        await log_gonder(ctx.guild, f"🔴 TOPLU KAYITSIZ | Yetkili: {ctx.author}")
         return
 
-    # 🔵 TEK KULLANICI
     await member.edit(roles=[])
     await member.add_roles(kayitsiz_rol)
 
     await ctx.send(f"🔴 {member.mention} kayıtsız yapıldı.")
-    await log_gonder(ctx.guild, f"🔴 Kayıtsız: {member} | Yetkili: {ctx.author}")
 
-# ---------------- KAYIT MENÜ ----------------
+# ---------------- KAYIT MENU ----------------
 class KayitMenu(View):
     def __init__(self, member, yetkili):
         super().__init__(timeout=60)
@@ -106,7 +118,7 @@ class KayitMenu(View):
     async def select_callback(self, interaction: discord.Interaction, select: Select):
 
         if interaction.user != self.yetkili:
-            return await interaction.response.send_message("❌ Bu menü sana ait değil!", ephemeral=True)
+            return await interaction.response.send_message("❌ Sana ait değil!", ephemeral=True)
 
         secim = select.values[0]
 
@@ -131,11 +143,6 @@ class KayitMenu(View):
             ephemeral=True
         )
 
-        await log_gonder(
-            interaction.guild,
-            f"🟢 Kayıt: {self.member} → {rol.name} | Yetkili: {self.yetkili}"
-        )
-
 # ---------------- KAYIT ----------------
 @bot.command()
 async def k(ctx, member: discord.Member, *, isim):
@@ -153,16 +160,34 @@ async def k(ctx, member: discord.Member, *, isim):
 
     await ctx.send(embed=embed, view=KayitMenu(member, ctx.author))
 
-# ---------------- KAYIT SAY ----------------
-@bot.command()
-async def kayitsay(ctx):
-    sayi = kayit_sayilari.get(ctx.author.id, 0)
-    await ctx.send(f"📊 {ctx.author.mention} toplam kayıt: {sayi}")
-
-# ---------------- READY ----------------
+# ---------------- JOIN SYSTEM (SADECE KANAL) ----------------
 @bot.event
-async def on_ready():
-    print(f"Bot aktif: {bot.user}")
+async def on_member_join(member):
+
+    guild = member.guild
+
+    account_age = (datetime.datetime.utcnow() - member.created_at).days
+
+    invite = await find_invite(member)
+    invite_info = "Bilinmiyor"
+
+    if invite:
+        invite_info = f"{invite.code} - {invite.inviter}"
+
+    kanal = guild.get_channel(JOIN_KANAL)
+
+    if kanal:
+        embed = discord.Embed(
+            title="🆕 Yeni Kullanıcı Sunucuya Katıldı",
+            color=discord.Color.green()
+        )
+
+        embed.add_field(name="Kullanıcı", value=member.mention, inline=True)
+        embed.add_field(name="ID", value=member.id, inline=True)
+        embed.add_field(name="Hesap Yaşı", value=f"{account_age} gün", inline=True)
+        embed.add_field(name="Invite", value=invite_info, inline=False)
+
+        await kanal.send(content=f"<@&{KAYIT_YETKILI}>", embed=embed)
 
 # ---------------- RUN ----------------
 bot.run(os.getenv("TOKEN"))
