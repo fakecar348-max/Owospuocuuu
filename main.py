@@ -19,7 +19,7 @@ LOG_KANAL = 123456789012345678
 # ---------------- INTENTS ----------------
 intents = discord.Intents.default()
 intents.message_content = True
-intents.members = True
+intents.members = True  # 🔥 önemli
 
 bot = commands.Bot(command_prefix=".", intents=intents)
 
@@ -36,7 +36,7 @@ async def log_gonder(guild, mesaj):
 async def on_command_error(ctx, error):
 
     if isinstance(error, commands.CommandNotFound):
-        return await ctx.send("❌ Komut bulunamadı!")
+        return await ctx.send("❌ Komut yok!")
 
     elif isinstance(error, commands.MissingRequiredArgument):
         return await ctx.send("❌ Eksik argüman!")
@@ -48,7 +48,7 @@ async def on_command_error(ctx, error):
         return await ctx.send("❌ Yetkin yok!")
 
     else:
-        await ctx.send("❌ Beklenmeyen hata!")
+        await ctx.send("❌ Hata oluştu!")
         raise error
 
 # ---------------- KAYITSIZ ----------------
@@ -58,16 +58,19 @@ async def kayitsiz(ctx, member: discord.Member = None):
     if KAYIT_YETKILI not in [r.id for r in ctx.author.roles]:
         return await ctx.send("❌ Yetkin yok!")
 
-    # ALL KOMUTU
+    kayitsiz_rol = ctx.guild.get_role(KAYITSIZ_ROL)
+
+    # 🔴 ALL KOMUTU
     if member is None or str(member).lower() == "all":
 
-        await ctx.send("⚠️ Tüm kullanıcılar kayıtsıza çekiliyor...")
+        await ctx.send("⚠️ Tüm sunucu kayıtsıza çekiliyor...")
 
-        kayitsiz_rol = ctx.guild.get_role(KAYITSIZ_ROL)
+        members = list(ctx.guild.members)  # 🔥 FIX
 
-        for m in ctx.guild.members:
+        for m in members:
             if m.bot:
                 continue
+
             try:
                 await m.edit(roles=[])
                 await m.add_roles(kayitsiz_rol)
@@ -78,16 +81,14 @@ async def kayitsiz(ctx, member: discord.Member = None):
         await log_gonder(ctx.guild, f"🔴 TOPLU KAYITSIZ | Yetkili: {ctx.author}")
         return
 
-    # TEK KULLANICI
+    # 🔵 TEK KULLANICI
     await member.edit(roles=[])
-
-    rol = ctx.guild.get_role(KAYITSIZ_ROL)
-    await member.add_roles(rol)
+    await member.add_roles(kayitsiz_rol)
 
     await ctx.send(f"🔴 {member.mention} kayıtsız yapıldı.")
     await log_gonder(ctx.guild, f"🔴 Kayıtsız: {member} | Yetkili: {ctx.author}")
 
-# ---------------- KAYIT MENU ----------------
+# ---------------- KAYIT MENÜ ----------------
 class KayitMenu(View):
     def __init__(self, member, yetkili):
         super().__init__(timeout=60)
