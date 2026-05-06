@@ -50,7 +50,7 @@ async def find_invite(member):
 
     return None
 
-# ---------------- ERROR SYSTEM ----------------
+# ---------------- ERROR ----------------
 @bot.event
 async def on_command_error(ctx, error):
 
@@ -160,7 +160,7 @@ async def k(ctx, member: discord.Member, *, isim):
 
     await ctx.send(embed=embed, view=KayitMenu(member, ctx.author))
 
-# ---------------- JOIN SYSTEM (SADECE KANAL) ----------------
+# ---------------- JOIN ----------------
 @bot.event
 async def on_member_join(member):
 
@@ -187,7 +187,11 @@ async def on_member_join(member):
         embed.add_field(name="Hesap Yaşı", value=f"{account_age} gün", inline=True)
         embed.add_field(name="Invite", value=invite_info, inline=False)
 
-        await kanal.send(content=f"<@&{KAYIT_YETKILI}>", embed=embed)
+        await kanal.send(
+            content=f"<@&{KAYIT_YETKILI}>",
+            embed=embed,
+            allowed_mentions=discord.AllowedMentions(roles=True)
+        )
 
 # ---------------- RUN ----------------
 bot.run(os.getenv("TOKEN"))
