@@ -99,6 +99,10 @@ async def kayitsiz(ctx, member: discord.Member = None):
     await member.add_roles(kayitsiz_rol)
 
     await ctx.send(f"🔴 {member.mention} kayıtsız yapıldı.")
+@bot.command()
+async def test(ctx):
+    await ctx.send("çalışıyorum")
+
 
 # ---------------- KAYIT MENU ----------------
 class KayitMenu(View):
