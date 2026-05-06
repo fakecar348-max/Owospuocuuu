@@ -31,33 +31,54 @@ async def log_gonder(guild, mesaj):
     if kanal:
         await kanal.send(mesaj)
 
-# ---------------- GLOBAL ERROR ----------------
+# ---------------- ERROR SYSTEM ----------------
 @bot.event
 async def on_command_error(ctx, error):
 
     if isinstance(error, commands.CommandNotFound):
-        return await ctx.send("❌ Böyle bir komut yok!")
+        return await ctx.send("❌ Komut bulunamadı!")
 
     elif isinstance(error, commands.MissingRequiredArgument):
-        return await ctx.send("❌ Eksik bilgi girdin!")
+        return await ctx.send("❌ Eksik argüman!")
 
     elif isinstance(error, commands.MemberNotFound):
         return await ctx.send("❌ Kullanıcı bulunamadı!")
 
     elif isinstance(error, commands.MissingRole):
-        return await ctx.send("❌ Bu komutu kullanamazsın!")
+        return await ctx.send("❌ Yetkin yok!")
 
     else:
-        await ctx.send("❌ Beklenmeyen bir hata oluştu!")
+        await ctx.send("❌ Beklenmeyen hata!")
         raise error
 
 # ---------------- KAYITSIZ ----------------
 @bot.command()
-async def kayitsiz(ctx, member: discord.Member):
+async def kayitsiz(ctx, member: discord.Member = None):
 
     if KAYIT_YETKILI not in [r.id for r in ctx.author.roles]:
         return await ctx.send("❌ Yetkin yok!")
 
+    # ALL KOMUTU
+    if member is None or str(member).lower() == "all":
+
+        await ctx.send("⚠️ Tüm kullanıcılar kayıtsıza çekiliyor...")
+
+        kayitsiz_rol = ctx.guild.get_role(KAYITSIZ_ROL)
+
+        for m in ctx.guild.members:
+            if m.bot:
+                continue
+            try:
+                await m.edit(roles=[])
+                await m.add_roles(kayitsiz_rol)
+            except:
+                pass
+
+        await ctx.send("✅ Tüm kullanıcılar kayıtsıza alındı.")
+        await log_gonder(ctx.guild, f"🔴 TOPLU KAYITSIZ | Yetkili: {ctx.author}")
+        return
+
+    # TEK KULLANICI
     await member.edit(roles=[])
 
     rol = ctx.guild.get_role(KAYITSIZ_ROL)
@@ -66,7 +87,7 @@ async def kayitsiz(ctx, member: discord.Member):
     await ctx.send(f"🔴 {member.mention} kayıtsız yapıldı.")
     await log_gonder(ctx.guild, f"🔴 Kayıtsız: {member} | Yetkili: {ctx.author}")
 
-# ---------------- KAYIT MENÜ ----------------
+# ---------------- KAYIT MENU ----------------
 class KayitMenu(View):
     def __init__(self, member, yetkili):
         super().__init__(timeout=60)
