@@ -1,9 +1,10 @@
 import discord
 from discord.ext import commands
-from discord.ui import View, Select
+from discord.ui import View
 import os
 import datetime
 import random
+import re
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -17,16 +18,14 @@ BASKAN_ROL = 1499363343683817542
 UYE_ROL = 1499363345189310615
 
 JOIN_KANAL = 1499363754402517124
+DEGER_LOG_KANAL = 1499367585266012233
 
 # ---------------- INTENTS ----------------
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 
-bot = commands.Bot(
-    command_prefix=".",
-    intents=intents
-)
+bot = commands.Bot(command_prefix=".", intents=intents)
 
 kayit_sayilari = {}
 kostebek_katilim = []
@@ -56,6 +55,76 @@ async def on_command_error(ctx, error):
         await ctx.send("❌ Hata oluştu!")
         raise error
 
+# ---------------- DEĞER SİSTEMİ ----------------
+def get_value(nick):
+    if not nick:
+        return 0
+    match = re.search(r"(\d+)M", nick)
+    return int(match.group(1)) if match else 0
+
+# ---------------- DEĞER EKLE ----------------
+@bot.command()
+async def dver(ctx, member: discord.Member, miktar: int):
+
+    if KAYIT_YETKILI not in [r.id for r in ctx.author.roles]:
+        return await ctx.send("❌ Yetkin yok!")
+
+    value = get_value(member.display_name)
+    value += miktar
+
+    parts = member.display_name.split("|")
+
+    isim = parts[0].strip() if len(parts) > 0 else member.name
+    ulke = parts[2].strip() if len(parts) > 2 else "TR"
+    mevki = parts[3].strip() if len(parts) > 3 else "Oyuncu"
+
+    new_nick = f"{isim} | {value}M | {ulke} | {mevki}"
+
+    await member.edit(nick=new_nick)
+
+    log = ctx.guild.get_channel(DEGER_LOG_KANAL)
+    if log:
+        embed = discord.Embed(title="📈 Değer Eklendi", color=discord.Color.green())
+        embed.add_field(name="Oyuncu", value=member.mention)
+        embed.add_field(name="Miktar", value=f"+{miktar}M")
+        embed.add_field(name="Yeni", value=f"{value}M")
+        embed.add_field(name="Yetkili", value=ctx.author.mention)
+        await log.send(embed=embed)
+
+    await ctx.send(f"✅ +{miktar}M eklendi → {member.mention}")
+
+# ---------------- DEĞER SİL ----------------
+@bot.command()
+async def dsil(ctx, member: discord.Member, miktar: int):
+
+    if KAYIT_YETKILI not in [r.id for r in ctx.author.roles]:
+        return await ctx.send("❌ Yetkin yok!")
+
+    value = get_value(member.display_name)
+    value -= miktar
+    if value < 0:
+        value = 0
+
+    parts = member.display_name.split("|")
+
+    isim = parts[0].strip() if len(parts) > 0 else member.name
+    ulke = parts[2].strip() if len(parts) > 2 else "TR"
+    mevki = parts[3].strip() if len(parts) > 3 else "Oyuncu"
+
+    new_nick = f"{isim} | {value}M | {ulke} | {mevki}"
+
+    await member.edit(nick=new_nick)
+
+    log = ctx.guild.get_channel(DEGER_LOG_KANAL)
+    if log:
+        embed = discord.Embed(title="📉 Değer Silindi", color=discord.Color.red())
+        embed.add_field(name="Oyuncu", value=member.mention)
+        embed.add_field(name="Miktar", value=f"-{miktar}M")
+        embed.add_field(name="Yeni", value=f"{value}M")
+        await log.send(embed=embed)
+
+    await ctx.send(f"❌ -{miktar}M silindi → {member.mention}")
+
 # ---------------- KAYITSIZ ----------------
 @bot.command()
 async def kayitsiz(ctx, member: discord.Member = None):
@@ -65,32 +134,16 @@ async def kayitsiz(ctx, member: discord.Member = None):
 
     role = ctx.guild.get_role(KAYITSIZ_ROL)
 
-    if member is None:
+    if not member:
         return await ctx.send("❌ Kullanıcı belirt!")
-
-    if str(member).lower() in ["all", "@everyone", "everyone"]:
-
-        await ctx.send("⚠️ Herkes kayıtsıza alınıyor...")
-
-        for m in ctx.guild.members:
-            if m.bot:
-                continue
-            try:
-                await m.edit(roles=[])
-                await m.add_roles(role)
-            except:
-                pass
-
-        return await ctx.send("✅ İşlem tamam!")
 
     await member.edit(roles=[])
     await member.add_roles(role)
 
     await ctx.send(f"🔴 {member.mention} kayıtsız yapıldı.")
 
-# ---------------- KAYIT MENU ----------------
+# ---------------- KAYIT ----------------
 class KayitMenu(View):
-
     def __init__(self, member, yetkili):
         super().__init__(timeout=60)
         self.member = member
@@ -104,7 +157,7 @@ class KayitMenu(View):
             discord.SelectOption(label="Başkan", value="baskan"),
         ],
     )
-    async def select_callback(self, interaction, select):
+    async def callback(self, interaction, select):
 
         if interaction.user != self.yetkili:
             return await interaction.response.send_message("❌ Sana ait değil!", ephemeral=True)
@@ -115,46 +168,18 @@ class KayitMenu(View):
             rol = interaction.guild.get_role(FUTBOLCU_ROL)
         elif secim == "uye":
             rol = interaction.guild.get_role(UYE_ROL)
-        elif secim == "baskan":
+        else:
             rol = interaction.guild.get_role(BASKAN_ROL)
 
         kayitsiz = interaction.guild.get_role(KAYITSIZ_ROL)
 
         await self.member.add_roles(rol)
-
         if kayitsiz in self.member.roles:
             await self.member.remove_roles(kayitsiz)
 
         kayit_sayilari[self.yetkili.id] = kayit_sayilari.get(self.yetkili.id, 0) + 1
 
-        await interaction.response.send_message(
-            f"✅ {self.member.mention} kayıt edildi: {rol.name}",
-            ephemeral=True
-        )
-
-# ---------------- KAYIT ----------------
-@bot.command()
-async def k(ctx, member: discord.Member, *, isim):
-
-    if KAYIT_YETKILI not in [r.id for r in ctx.author.roles]:
-        return await ctx.send("❌ Yetkin yok!")
-
-    await member.edit(nick=isim)
-
-    embed = discord.Embed(
-        title="Birini Seçin",
-        description=f"{member.mention} için rol seçin",
-        color=discord.Color.blue()
-    )
-
-    await ctx.send(embed=embed, view=KayitMenu(member, ctx.author))
-
-# ---------------- KAYITSAY ----------------
-@bot.command(name="kayıtsay", aliases=["kayitsay"])
-async def kayitsay(ctx):
-
-    sayi = kayit_sayilari.get(ctx.author.id, 0)
-    await ctx.send(f"📊 {ctx.author.mention} kayıt sayın: **{sayi}**")
+        await interaction.response.send_message("✅ Kayıt yapıldı!", ephemeral=True)
 
 # ---------------- JOIN ----------------
 @bot.event
@@ -164,8 +189,8 @@ async def on_member_join(member):
 
     if kanal:
         embed = discord.Embed(
-            title="🆕 Yeni Üye Katıldı",
-            description=f"{member.mention} sunucuya giriş yaptı",
+            title="🆕 Yeni Üye",
+            description=f"{member.mention} katıldı!",
             color=discord.Color.green()
         )
 
@@ -175,11 +200,27 @@ async def on_member_join(member):
             allowed_mentions=discord.AllowedMentions(roles=True)
         )
 
-# ---------------- KÖSTEBEK OYUN ----------------
+# ---------------- KÖSTEBEK ----------------
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def kostebekozel(ctx):
+
+    kostebek_katilim.clear()
+
+    embed = discord.Embed(
+        title="🕵️ Köstebek Oyunu",
+        description="Katılmak için butona bas",
+        color=discord.Color.orange()
+    )
+
+    view = KostebekView()
+
+    await ctx.send(embed=embed, view=view)
+
 class KostebekView(View):
 
     def __init__(self):
-        super().__init__(timeout=120)
+        super().__init__()
 
     @discord.ui.button(label="Katıl", style=discord.ButtonStyle.green)
     async def katil(self, interaction, button):
@@ -189,7 +230,7 @@ class KostebekView(View):
 
         kostebek_katilim.append(interaction.user)
 
-        liste = "\n".join([f"• {u.name}" for u in kostebek_katilim])
+        liste = "\n".join([u.name for u in kostebek_katilim])
 
         embed = discord.Embed(
             title="🕵️ Köstebek Oyunu",
@@ -199,23 +240,7 @@ class KostebekView(View):
 
         await interaction.response.edit_message(embed=embed, view=self)
 
-# ---------------- KÖSTEBEK BAŞLAT ----------------
-@bot.command()
-@commands.has_permissions(administrator=True)
-async def kostebekozel(ctx):
-
-    kostebek_katilim.clear()
-
-    embed = discord.Embed(
-        title="🕵️ Köstebek Oyunu",
-        description="Katılmak için butona bas\nBaşlatmak için .baslat",
-        color=discord.Color.orange()
-    )
-
-    view = KostebekView()
-
-    await ctx.send(embed=embed, view=view)
-
+# ---------------- BASLAT ----------------
 @bot.command()
 @commands.has_permissions(administrator=True)
 async def baslat(ctx):
@@ -227,32 +252,21 @@ async def baslat(ctx):
 
     try:
         await ctx.author.send(f"🕵️ Köstebek: {secilen.mention}")
-        await ctx.send("🎮 Oyun başladı! DM gönderildi.")
+        await ctx.send("🎮 Oyun başladı!")
     except:
         await ctx.send("❌ DM kapalı!")
 
     kostebek_katilim.clear()
 
 # ---------------- YARDIM ----------------
-@bot.command(name="yardım", aliases=["yardim"])
+@bot.command()
 async def yardim(ctx):
 
-    embed = discord.Embed(
-        title="📖 Yardım",
-        color=discord.Color.blue()
-    )
+    embed = discord.Embed(title="📖 Yardım")
 
-    embed.add_field(
-        name="Kayıt",
-        value=".k @üye isim\n.kayitsiz\n.kayıtsay",
-        inline=False
-    )
-
-    embed.add_field(
-        name="Oyun",
-        value=".kostebekozel\n.baslat",
-        inline=False
-    )
+    embed.add_field(name="Kayıt", value=".k .kayitsiz .kayıtsay", inline=False)
+    embed.add_field(name="Değer", value=".dver .dsil", inline=False)
+    embed.add_field(name="Oyun", value=".kostebekozel .baslat", inline=False)
 
     await ctx.send(embed=embed)
 
